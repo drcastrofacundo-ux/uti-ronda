@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#07131f">
+  <title>UTI Ronda · borrador local</title>
+  <link rel="stylesheet" href="styles.css?v=2">
+</head>
+<body>
+  <header class="app-header">
+    <a class="back-link" href="../uti-tools/index.html" aria-label="Abrir UTI Tools">← UTI Tools</a>
+    <div>
+      <p class="eyebrow">Herramienta local · MVP</p>
+      <h1>UTI Ronda</h1>
+      <p class="subtitle">Datos estructurados y borrador de evolución para revisión médica.</p>
+    </div>
+    <span class="local-badge">Sin nube</span>
+  </header>
+
+  <main class="layout">
+    <form id="roundForm" class="form-column" novalidate>
+      <aside class="privacy-banner" aria-label="Privacidad">
+        <strong>No ingresar identificadores directos.</strong>
+        <span>Prohibidos nombre, DNI, historia clínica, teléfono y correo. Esta versión no envía datos ni audio y no guarda la ronda.</span>
+      </aside>
+
+      <section class="card" aria-labelledby="basicTitle">
+        <div class="section-title">
+          <span class="step">01</span>
+          <div><h2 id="basicTitle">Identificación operativa</h2><p>Solo cama y datos clínicos no nominales.</p></div>
+        </div>
+        <div class="grid cols-4">
+          <label><span>Cama <b>*</b></span><input id="bed" autocomplete="off" placeholder="Ej. 4"></label>
+          <label><span>Edad <b>*</b></span><div class="unit-input"><input id="age" type="number" min="18" max="120"><i>años</i></div></label>
+          <label><span>Sexo para CKD-EPI</span><select id="sex"><option value="">Seleccionar</option><option value="female">Femenino</option><option value="male">Masculino</option></select></label>
+          <label><span>Día de UTI <b>*</b></span><input id="icuDay" type="number" min="1" max="999"></label>
+          <label class="span-4"><span>Problema / diagnóstico activo <b>*</b></span><input id="activeProblem" autocomplete="off" placeholder="Sin nombres ni otros identificadores"></label>
+        </div>
+      </section>
+
+      <section class="card" aria-labelledby="respTitle">
+        <div class="section-title">
+          <span class="step">02</span>
+          <div><h2 id="respTitle">Respiratorio</h2><p>Parámetros actuales; las unidades quedan visibles.</p></div>
+        </div>
+        <div class="grid cols-3">
+          <label><span>¿Intubado? <b>*</b></span><select id="intubated"><option value="">Seleccionar</option><option value="yes">Sí</option><option value="no">No</option></select></label>
+        </div>
+        <div id="invasiveFields" class="grid cols-4 conditional" hidden>
+          <label><span>Modo</span><input id="ventMode" placeholder="VCV, PCV, PSV..."></label>
+          <label><span>Presión insp. / control</span><div class="unit-input"><input id="inspiratoryPressure" inputmode="decimal"><i>cmH₂O</i></div></label>
+          <label><span>PEEP</span><div class="unit-input"><input id="peep" inputmode="decimal"><i>cmH₂O</i></div></label>
+          <label><span>VT</span><div class="unit-input"><input id="tidalVolume" inputmode="decimal"><i>mL</i></div></label>
+          <label><span>FiO₂</span><div class="unit-input"><input id="fio2" inputmode="decimal"><i>%</i></div></label>
+          <label><span>FR programada</span><div class="unit-input"><input id="respiratoryRate" inputmode="decimal"><i>rpm</i></div></label>
+          <label><span>Presión pico</span><div class="unit-input"><input id="peakPressure" inputmode="decimal"><i>cmH₂O</i></div></label>
+        </div>
+        <div id="nonInvasiveFields" class="grid cols-3 conditional" hidden>
+          <label><span>Dispositivo</span><input id="oxygenDevice" placeholder="Cánula, máscara, CNAF..."></label>
+          <label><span>Flujo</span><div class="unit-input"><input id="oxygenFlow" inputmode="decimal"><i>L/min</i></div></label>
+          <label><span>FiO₂ si disponible</span><div class="unit-input"><input id="nonInvasiveFio2" inputmode="decimal"><i>%</i></div></label>
+        </div>
+      </section>
+
+      <section class="card" aria-labelledby="hemoTitle">
+        <div class="section-title">
+          <span class="step">03</span>
+          <div><h2 id="hemoTitle">Hemodinamia</h2><p>DSI y dosis como información fisiológica; sin umbrales ni sugerencias de titulación.</p></div>
+        </div>
+        <div class="grid cols-3">
+          <label><span>TAS</span><div class="unit-input"><input id="systolicBp" type="number" min="1" max="300"><i>mmHg</i></div></label>
+          <label><span>TAD</span><div class="unit-input"><input id="diastolicBp" type="number" min="1" max="200"><i>mmHg</i></div></label>
+          <label><span>FC</span><div class="unit-input"><input id="heartRate" type="number" min="1" max="300"><i>lpm</i></div></label>
+        </div>
+        <div id="dsiResult" class="calculation neutral" aria-live="polite">
+          <div><span>Índice de Shock Diastólico · FC/TAD</span><strong>Esperando TAS, TAD y FC válidas</strong></div>
+          <p>Dato fisiológico complementario: interpretar con perfusión, tendencia, vasoactivos y contexto clínico.</p>
+        </div>
+        <div class="grid cols-3 compact-grid">
+          <label><span>Peso real · referencia primaria</span><div class="unit-input"><input id="weightKg" type="number" min="20" max="350" step="0.1"><i>kg</i></div></label>
+          <label><span>Talla</span><div class="unit-input"><input id="heightCm" type="number" min="100" max="250" step="0.1"><i>cm</i></div></label>
+        </div>
+        <div id="anthropometryResult" class="calculation neutral" aria-live="polite">
+          <div><span>Antropometría</span><strong>Esperando peso real y talla válidos</strong></div>
+          <p>El peso real no se oculta; peso ideal y ajustado son comparaciones, no sugerencias terapéuticas.</p>
+        </div>
+        <div class="subsection-head"><div><h3>Vasoactivos e inotrópicos activos</h3><p class="subsection-note">Preparación ingresada → concentración → dosis. Los valores de referencia siempre son editables.</p></div><button class="text-button" id="addVasoactive" type="button">+ Agregar infusión</button></div>
+        <div id="vasoactiveRows" class="infusion-list"></div>
+      </section>
+
+      <section class="card" aria-labelledby="renalTitle">
+        <div class="section-title">
+          <span class="step">04</span>
+          <div><h2 id="renalTitle">Renal y balance</h2><p>El débito se calcula como volumen ÷ peso ÷ horas.</p></div>
+        </div>
+        <div class="grid cols-5">
+          <label><span>Situación renal</span><select id="renalStatus"><option value="">Seleccionar</option><option value="stable">Función renal estable</option><option value="aki-no-krt">IRA sin TRR</option><option value="ihd">Hemodiálisis intermitente</option><option value="crrt-sled">TRR continua / SLED</option></select></label>
+          <label><span>Diuresis</span><div class="unit-input"><input id="urineMl" inputmode="decimal"><i>mL</i></div></label>
+          <label><span>Período</span><div class="unit-input"><input id="urineHours" inputmode="decimal"><i>h</i></div></label>
+          <label><span>Balance 24 h</span><div class="unit-input"><input id="balance24h" inputmode="decimal"><i>mL</i></div></label>
+          <label><span>Creatinina</span><div class="unit-input"><input id="creatinine" inputmode="decimal"><i>mg/dL</i></div></label>
+        </div>
+        <div id="urineResult" class="calculation neutral" aria-live="polite">
+          <div><span>Débito urinario</span><strong>Esperando datos</strong></div>
+          <p>Ingresá diuresis, peso y horas para calcular mL/kg/h.</p>
+        </div>
+        <div id="egfrResult" class="calculation neutral" aria-live="polite">
+          <div><span>TFGe estimada</span><strong>Situación renal pendiente</strong></div>
+          <p>Solo se estima con función renal estable; nunca ajusta dosis automáticamente.</p>
+        </div>
+      </section>
+
+      <section class="card" aria-labelledby="infectTitle">
+        <div class="section-title">
+          <span class="step">05</span>
+          <div><h2 id="infectTitle">Infectología</h2><p>Registrar hechos y pendientes, sin inferir conducta.</p></div>
+        </div>
+        <div class="grid cols-1">
+          <label><span>Antibióticos activos</span><textarea id="antibiotics" rows="2" placeholder="Droga, dosis/unidad e intervalo si están corroborados"></textarea></label>
+          <label><span>Cultivos</span><textarea id="cultures" rows="2" placeholder="Muestra, fecha/estado y resultado si está disponible"></textarea></label>
+          <label><span>Pendientes</span><textarea id="infectiousPending" rows="2" placeholder="Resultados o estudios pendientes"></textarea></label>
+        </div>
+      </section>
+
+      <section class="card" aria-labelledby="sedationTitle">
+        <div class="section-title">
+          <span class="step">06</span>
+          <div><h2 id="sedationTitle">Sedación</h2><p>RASS observado y drogas activas con unidad explícita.</p></div>
+        </div>
+        <div class="grid cols-3">
+          <label><span>RASS</span><select id="rass"><option value="">A corroborar</option><option>-5</option><option>-4</option><option>-3</option><option>-2</option><option>-1</option><option>0</option><option>+1</option><option>+2</option><option>+3</option><option>+4</option></select></label>
+        </div>
+        <div class="subsection-head"><div><h3>Infusiones activas</h3><p class="subsection-note">Ingresá hasta 72 h. El total administrado se estima a velocidad constante; no equivale a acumulación farmacológica.</p></div><button class="text-button" id="addSedative" type="button">+ Agregar infusión</button></div>
+        <div id="sedativeRows" class="infusion-list"></div>
+      </section>
+
+      <section class="card" aria-labelledby="audioTitle">
+        <div class="section-title">
+          <span class="step">07</span>
+          <div><h2 id="audioTitle">Nota clínica o transcripción</h2><p>La app incorpora el texto que pegues: no escucha, interpreta ni corrige una transcripción.</p></div>
+        </div>
+        <label class="manual-note primary-note"><span>Texto para incorporar al borrador</span><textarea id="manualTranscript" rows="9" placeholder="Pegá acá una nota o transcripción ya revisada. La app la incorporará sin interpretación clínica. No ingreses identificadores directos."></textarea></label>
+        <div class="transcript-tools">
+          <p><strong>Camino recomendado:</strong> pegá el texto corregido o abrí un TXT producido por otra herramienta. Si la transcripción externa tiene errores, corregilos antes de generar.</p>
+          <label class="text-file-button"><input id="transcriptFile" type="file" accept="text/plain,.txt" hidden>Cargar transcripción existente (.txt)</label>
+        </div>
+        <details class="audio-optional">
+          <summary>Opcional: abrir un audio local para escucharlo — no transcribe</summary>
+          <div class="audio-optional-body">
+            <p>Usalo sólo si te sirve escuchar el audio mientras corregís el texto. El archivo queda en esta sesión y no se sube.</p>
+            <label id="audioDrop" class="drop-zone">
+              <input id="audioFile" type="file" accept="audio/*,video/mp4,.ogg,.oga,.opus,.m4a,.mp4,.aac,.mp3,.wav,.webm" hidden>
+              <span class="drop-icon">♪</span>
+              <strong>Seleccionar o arrastrar audio para escuchar</strong>
+              <small>No genera texto · no se sube · recomendado hasta 100 MB</small>
+            </label>
+            <div id="audioPreview" class="audio-preview" hidden>
+              <div><strong id="audioName"></strong><span id="audioMeta"></span></div>
+              <button id="removeAudio" class="text-button danger-text" type="button">Quitar</button>
+              <audio id="audioPlayer" controls preload="metadata"></audio>
+            </div>
+            <div id="audioStatus" class="inline-alert audio-state" role="status">Sin audio abierto. Este control no genera una transcripción.</div>
+          </div>
+        </details>
+        <div id="privacyResult" class="inline-alert ok" role="status">Sin señales obvias de identificadores directos en los textos.</div>
+      </section>
+
+      <div class="form-actions">
+        <button id="generateButton" class="primary-button" type="button">Generar borrador</button>
+        <button id="clearButton" class="secondary-button" type="button">Limpiar ronda</button>
+      </div>
+    </form>
+
+    <aside class="output-column">
+      <section class="output-card">
+        <div class="output-header">
+          <div><p class="eyebrow">Salida revisable</p><h2>Borrador de evolución</h2></div>
+          <button id="copyButton" class="copy-button" type="button" disabled>Copiar texto</button>
+        </div>
+        <div id="outputEmpty" class="output-empty"><span>≡</span><p>Completá los datos disponibles y generá un borrador. El texto incluirá solamente lo consignado.</p></div>
+        <textarea id="evolutionOutput" rows="28" readonly hidden></textarea>
+        <div id="copyStatus" class="copy-status" role="status"></div>
+        <footer>No formula diagnósticos nuevos, recomendaciones ni conductas autónomas.</footer>
+      </section>
+    </aside>
+  </main>
+
+  <template id="infusionRowTemplate">
+    <div class="infusion-row">
+      <div class="infusion-row-head">
+        <label><span>Fármaco</span><select class="inf-drug"><option value="">Seleccionar</option></select></label>
+        <button class="remove-row" type="button" aria-label="Quitar infusión">×</button>
+      </div>
+      <div class="source-trace neutral"><strong>Referencia local</strong><span>Elegí un fármaco para ver la fuente del valor sugerido.</span></div>
+      <div class="infusion-fields">
+        <label><span>Ampollas</span><input class="inf-ampoules" inputmode="decimal" placeholder="Cantidad"></label>
+        <label><span>Contenido real / ampolla</span><div class="amount-input"><input class="inf-amount" inputmode="decimal" placeholder="Valor"><select class="inf-amount-unit"><option>mg</option><option>mcg</option><option>UI</option></select></div></label>
+        <label><span>Volumen final</span><div class="unit-input"><input class="inf-volume" inputmode="decimal"><i>mL</i></div></label>
+        <label><span>Velocidad de bomba</span><div class="unit-input"><input class="inf-rate" inputmode="decimal"><i>mL/h</i></div></label>
+        <label class="inf-duration-field"><span>Duración</span><div class="unit-input"><input class="inf-duration" type="number" inputmode="decimal" min="0.5" max="72" step="0.5" placeholder="1–72"><i>h</i></div></label>
+      </div>
+      <div class="infusion-result" aria-live="polite"><span>Completá preparación y velocidad.</span></div>
+    </div>
+  </template>
+
+  <script src="uti-ronda-core.js?v=4"></script>
+  <script src="app.js?v=4" defer></script>
+</body>
+</html>
