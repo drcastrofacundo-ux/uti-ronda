@@ -20,7 +20,13 @@ const value = (id) => byId(id).value.trim();
 const numberText = (number, digits = 3) => Number(number).toLocaleString('es-AR', { maximumFractionDigits: digits });
 
 function currentAnthropometry() {
-  return core.calculateAnthropometry({ weightKg: value('weightKg'), heightCm: value('heightCm') });
+  // El sexo entra acá además de en CKD-EPI: sin él no hay peso predicho de
+  // Devine, y sin peso predicho el VT y el débito urinario no se indexan.
+  return core.calculateAnthropometry({
+    weightKg: value('weightKg'),
+    heightCm: value('heightCm'),
+    sex: value('sex'),
+  });
 }
 
 function updateDsiCalculation() {
@@ -42,8 +48,11 @@ function updateAnthropometry() {
     const adjusted = result.hasObesity && result.adjustedWeightKg !== null
       ? ` · peso ajustado ${numberText(result.adjustedWeightKg, 1)} kg`
       : '';
+    const idealLabel = result.idealWeightBasis === 'devine'
+      ? `Peso predicho ${numberText(result.idealWeightKg, 1)} kg (Devine)`
+      : `Peso de referencia ${numberText(result.idealWeightKg, 1)} kg (IMC 22,5; cargá el sexo para obtener el peso predicho)`;
     panel.querySelector('strong').textContent = `Peso real ${numberText(result.actualWeightKg, 1)} kg · IMC ${numberText(result.bmi, 1)} kg/m²`;
-    panel.querySelector('p').textContent = `Peso ideal estimado ${numberText(result.idealWeightKg, 1)} kg${adjusted}. Peso ideal/ajustado: comparación antropométrica, no sugerencia de titulación.`;
+    panel.querySelector('p').textContent = `${idealLabel}${adjusted}. El peso real no se oculta; el predicho indexa volumen corriente y débito urinario, y el ajustado normaliza sedantes.`;
   }
   updateAllInfusions();
 }
@@ -135,22 +144,31 @@ function renderInfusionCalculation(row) {
 
   resultPanel.className = 'infusion-result ready';
   if (calculation.kind === 'activity') {
-    resultPanel.innerHTML = `<strong>${numberText(calculation.rateMlH)} mL/h → ${numberText(calculation.absoluteUiMin, 4)} UI/min</strong> · concentración ${numberText(calculation.concentrationUiMl, 4)} UI/mL · ${numberText(calculation.absoluteUiH, 3)} UI/h (apoyo)`;
+    const activityDetail = drug.id === 'vasopressin' ? ' (apoyo)' : '';
+    resultPanel.innerHTML = `<strong>${numberText(calculation.rateMlH)} mL/h → ${numberText(calculation.absoluteUiMin, 4)} UI/min</strong> · concentración ${numberText(calculation.concentrationUiMl, 4)} UI/mL · ${numberText(calculation.absoluteUiH, 3)} UI/h${activityDetail}`;
     return;
   }
-  const realDose = calculation.doseMcgKgMinReal === null
+  // La dosis destacada es la que corresponde al peso de dosificación de esa droga
+  // (drug.dosingWeight); las otras quedan como comparación. Si el peso que
+  // corresponde no está disponible, cae a peso real y lo dice.
+  const dosesByBasis = {
+    actual: { value: calculation.doseMcgKgMinReal, label: 'peso real' },
+    ideal: { value: calculation.doseMcgKgMinIdeal, label: 'peso ideal' },
+    adjusted: { value: calculation.doseMcgKgMinAdjusted, label: 'peso ajustado' },
+  };
+  const requestedBasis = dosesByBasis[drug.dosingWeight] ? drug.dosingWeight : 'actual';
+  const primaryBasis = dosesByBasis[requestedBasis].value === null ? 'actual' : requestedBasis;
+  const primaryDose = dosesByBasis[primaryBasis];
+  const perHour = primaryDose.value === null ? null : primaryDose.value * 60;
+  const realDose = primaryDose.value === null
     ? '<strong>mcg/kg/min:</strong> cargá un peso real válido (20–350 kg)'
     : row.dataset.group === 'vasoactive'
-      ? `<strong>${numberText(calculation.doseMcgKgMinReal, 4)} mcg/kg/min por peso real</strong>`
-      : `<strong>${numberText(calculation.doseMcgKgMinReal, 4)} mcg/kg/min por peso real</strong> · ${numberText(calculation.doseMcgKgH, 3)} mcg/kg/h`;
-  const comparisonDoses = row.dataset.group === 'vasoactive' && calculation.doseMcgKgMinIdeal !== null
-    ? [
-      `${numberText(calculation.doseMcgKgMinIdeal, 4)} mcg/kg/min por peso ideal`,
-      calculation.doseMcgKgMinAdjusted !== null
-        ? `${numberText(calculation.doseMcgKgMinAdjusted, 4)} mcg/kg/min por peso ajustado`
-        : '',
-    ].filter(Boolean).join(' · ')
-    : '';
+      ? `<strong>${numberText(primaryDose.value, 4)} mcg/kg/min por ${primaryDose.label}</strong>`
+      : `<strong>${numberText(primaryDose.value, 4)} mcg/kg/min por ${primaryDose.label}</strong> · ${numberText(perHour, 3)} mcg/kg/h`;
+  const comparisonDoses = Object.entries(dosesByBasis)
+    .filter(([basis, entry]) => basis !== primaryBasis && entry.value !== null)
+    .map(([, entry]) => `${numberText(entry.value, 4)} mcg/kg/min por ${entry.label}`)
+    .join(' · ');
   const preparationText = `<strong>${numberText(calculation.totalMg, 3)} mg preparados</strong> · concentración final <strong>${numberText(calculation.concentrationMgMl, 4)} mg/mL</strong> (${numberText(calculation.concentrationMcgMl, 2)} mcg/mL) · ${numberText(calculation.rateMlH)} mL/h → <strong>${numberText(calculation.absoluteMcgMin, 3)} mcg/min</strong> · ${realDose}${comparisonDoses ? `<br><span>Comparación: ${comparisonDoses}. No modifica la bomba.</span>` : ''}`;
   if (row.dataset.group !== 'sedative') {
     resultPanel.innerHTML = preparationText;
@@ -234,11 +252,17 @@ function updateAllInfusions() {
 function toggleRespiratoryFields() {
   const intubated = value('intubated');
   byId('invasiveFields').hidden = intubated !== 'yes';
+  byId('nivFields').hidden = intubated !== 'niv';
   byId('nonInvasiveFields').hidden = intubated !== 'no';
 }
 
 function updateUrineCalculation() {
-  const result = core.calculateUrineOutputRate({ urineMl: value('urineMl'), weightKg: value('weightKg'), hours: value('urineHours') });
+  const result = core.calculateUrineOutputRate({
+    urineMl: value('urineMl'),
+    weightKg: value('weightKg'),
+    hours: value('urineHours'),
+    indexWeightKg: currentAnthropometry()?.predictedBodyWeightKg,
+  });
   const panel = byId('urineResult');
   panel.className = 'calculation';
   if (!result.evaluable) {
@@ -247,7 +271,10 @@ function updateUrineCalculation() {
   } else {
     const period = `${numberText(core.parseLocalizedNumber(value('urineMl')), 0)} mL en ${numberText(core.parseLocalizedNumber(value('urineHours')), 1)} h`;
     const alertLabel = result.key === 'no-signal' ? '' : ` · ${result.label}`;
-    panel.querySelector('strong').textContent = `${numberText(result.rateMlKgH, 2)} mL/kg/h · ${period}${alertLabel}`;
+    const basisLabel = result.indexWeightBasis === 'predicted'
+      ? ` sobre peso predicho (${numberText(result.rateOnActualWeightMlKgH, 2)} sobre peso real)`
+      : ' sobre peso real';
+    panel.querySelector('strong').textContent = `${numberText(result.rateMlKgH, 2)} mL/kg/h${basisLabel} · ${period}${alertLabel}`;
     panel.classList.add(['anuria-window', 'zero-short-window'].includes(result.key) ? 'alert' : ['oliguria-window', 'low-short-window'].includes(result.key) ? 'warning' : 'neutral');
   }
   panel.querySelector('p').textContent = result.key === 'no-signal' ? '' : result.detail;
@@ -260,6 +287,9 @@ function collectData() {
       intubated: value('intubated'), mode: value('ventMode'), inspiratoryPressure: value('inspiratoryPressure'),
       peep: value('peep'), tidalVolume: value('tidalVolume'), fio2: value('fio2'),
       respiratoryRate: value('respiratoryRate'), peakPressure: value('peakPressure'),
+      nivMode: value('nivMode'), nivInterface: value('nivInterface'),
+      nivInspiratoryPressure: value('nivInspiratoryPressure'), nivPeep: value('nivPeep'),
+      nivFio2: value('nivFio2'), nivRespiratoryRate: value('nivRespiratoryRate'),
       oxygenDevice: value('oxygenDevice'), oxygenFlow: value('oxygenFlow'), nonInvasiveFio2: value('nonInvasiveFio2'),
     },
     systolicBp: value('systolicBp'), diastolicBp: value('diastolicBp'), heartRate: value('heartRate'),
@@ -396,8 +426,10 @@ byId('addSedative').addEventListener('click', () => addInfusionRow('sedativeRows
 byId('intubated').addEventListener('change', toggleRespiratoryFields);
 ['systolicBp', 'diastolicBp', 'heartRate'].forEach((id) => byId(id).addEventListener('input', updateDsiCalculation));
 byId('weightKg').addEventListener('input', () => { updateAnthropometry(); updateUrineCalculation(); });
-byId('heightCm').addEventListener('input', updateAnthropometry);
-['renalStatus', 'sex'].forEach((id) => byId(id).addEventListener('change', updateRenalCalculation));
+byId('heightCm').addEventListener('input', () => { updateAnthropometry(); updateUrineCalculation(); });
+byId('renalStatus').addEventListener('change', updateRenalCalculation);
+// El sexo alimenta CKD-EPI y el peso predicho, así que recalcula las tres cosas.
+byId('sex').addEventListener('change', () => { updateRenalCalculation(); updateAnthropometry(); updateUrineCalculation(); });
 ['age', 'creatinine'].forEach((id) => byId(id).addEventListener('input', updateRenalCalculation));
 ['urineMl', 'urineHours'].forEach((id) => byId(id).addEventListener('input', updateUrineCalculation));
 ['activeProblem', 'antibiotics', 'cultures', 'infectiousPending', 'manualTranscript'].forEach((id) => byId(id).addEventListener('input', updatePrivacyNotice));

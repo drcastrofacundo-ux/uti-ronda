@@ -25,27 +25,38 @@
     'crrt-sled': 'TRR continua / SLED',
   });
 
+  // dosingWeight declara sobre qué peso se normaliza la dosis de cada droga:
+  //   'actual'   peso real. Vasoactivos: se titulan a efecto y SOFA-2 se deriva
+  //              sobre peso real, así que cambiarlo rompería la comparabilidad.
+  //   'ideal'    peso predicho (Devine). Opioides sintéticos: remifentanilo y
+  //              fentanilo se dosifican sobre peso ideal.
+  //   'adjusted' peso ajustado si hay obesidad, peso real si no. Mismo criterio
+  //              que getPesoDosis() de MIRA para el midazolam.
   const DRUG_LIBRARY = Object.freeze({
     vasoactive: Object.freeze([
-      Object.freeze({ id: 'norepinephrine', label: 'Noradrenalina', defaultAmount: 4, defaultUnit: 'mg', source: 'UTI Tools', trace: 'vasopresores.html: 4 mg/ampolla' }),
-      Object.freeze({ id: 'vasopressin', label: 'Vasopresina', defaultAmount: 20, defaultUnit: 'UI', source: 'UTI Tools', trace: 'vasopresores.html: 20 UI/ampolla' }),
-      Object.freeze({ id: 'dobutamine', label: 'Dobutamina', defaultAmount: 250, defaultUnit: 'mg', source: 'UTI Tools', trace: 'vasopresores.html: 250 mg/ampolla' }),
-      Object.freeze({ id: 'epinephrine', label: 'Adrenalina', defaultAmount: 1, defaultUnit: 'mg', source: 'UTI Tools', trace: 'vasopresores.html: 1 mg/ampolla' }),
+      Object.freeze({ id: 'norepinephrine', label: 'Noradrenalina', defaultAmount: 4, defaultUnit: 'mg', dosingWeight: 'actual', source: 'UTI Tools', trace: 'vasopresores.html: 4 mg/ampolla' }),
+      Object.freeze({ id: 'vasopressin', label: 'Vasopresina', defaultAmount: 20, defaultUnit: 'UI', dosingWeight: 'actual', source: 'UTI Tools', trace: 'vasopresores.html: 20 UI/ampolla' }),
+      Object.freeze({ id: 'dobutamine', label: 'Dobutamina', defaultAmount: 250, defaultUnit: 'mg', dosingWeight: 'actual', source: 'UTI Tools', trace: 'vasopresores.html: 250 mg/ampolla' }),
+      Object.freeze({ id: 'epinephrine', label: 'Adrenalina', defaultAmount: 1, defaultUnit: 'mg', dosingWeight: 'actual', source: 'UTI Tools', trace: 'vasopresores.html: 1 mg/ampolla' }),
       Object.freeze({
-        id: 'nitroglycerin', label: 'Nitroglicerina', defaultAmount: null, defaultUnit: 'mg', source: 'conflicto local',
+        id: 'nitroprusside', label: 'Nitroprusiato de sodio', defaultAmount: null, defaultUnit: 'mg', dosingWeight: 'actual', source: 'sin presentación confirmada en la biblioteca local',
+        trace: 'UTI Tools y MIRA locales no fijan contenido por ampolla; ingresar el contenido real', requiresManualAmount: true,
+      }),
+      Object.freeze({
+        id: 'nitroglycerin', label: 'Nitroglicerina', defaultAmount: null, defaultUnit: 'mg', dosingWeight: 'actual', source: 'conflicto local',
         trace: 'UTI Tools registra 25 mg/ampolla y la Recorrida previa 50 mg/ampolla; ingresar el contenido real', requiresManualAmount: true,
       }),
     ]),
     sedative: Object.freeze([
       Object.freeze({
-        id: 'midazolam', label: 'Midazolam', defaultAmount: 15, defaultUnit: 'mg', source: 'práctica local confirmada por el usuario',
+        id: 'midazolam', label: 'Midazolam', defaultAmount: 15, defaultUnit: 'mg', dosingWeight: 'adjusted', source: 'práctica local confirmada por el usuario',
         trace: '15 mg/ampolla como valor sugerido y confirmable; verificar siempre la presentación disponible',
       }),
-      Object.freeze({ id: 'remifentanil', label: 'Remifentanilo', defaultAmount: 5, defaultUnit: 'mg', source: 'MIRA + UTI Tools', trace: 'ambos registran 5 mg/ampolla' }),
-      Object.freeze({ id: 'fentanyl', label: 'Fentanilo', defaultAmount: 0.5, defaultUnit: 'mg', source: 'MIRA + UTI Tools', trace: '0,5 mg/ampolla = 500 mcg/ampolla' }),
-      Object.freeze({ id: 'dexmedetomidine', label: 'Dexmedetomidina', defaultAmount: 0.2, defaultUnit: 'mg', source: 'MIRA + UTI Tools', trace: '0,2 mg/ampolla = 200 mcg/ampolla' }),
+      Object.freeze({ id: 'remifentanil', label: 'Remifentanilo', defaultAmount: 5, defaultUnit: 'mg', dosingWeight: 'ideal', source: 'MIRA + UTI Tools', trace: 'ambos registran 5 mg/ampolla' }),
+      Object.freeze({ id: 'fentanyl', label: 'Fentanilo', defaultAmount: 0.5, defaultUnit: 'mg', dosingWeight: 'ideal', source: 'MIRA + UTI Tools', trace: '0,5 mg/ampolla = 500 mcg/ampolla' }),
+      Object.freeze({ id: 'dexmedetomidine', label: 'Dexmedetomidina', defaultAmount: 0.2, defaultUnit: 'mg', dosingWeight: 'adjusted', source: 'MIRA + UTI Tools', trace: '0,2 mg/ampolla = 200 mcg/ampolla' }),
       Object.freeze({
-        id: 'propofol', label: 'Propofol', defaultAmount: null, defaultUnit: 'mg', source: 'MIRA',
+        id: 'propofol', label: 'Propofol', defaultAmount: null, defaultUnit: 'mg', dosingWeight: 'adjusted', source: 'MIRA',
         trace: 'MIRA registra dosis en mg/kg/h, pero no fija contenido por ampolla; ingresar el contenido real', requiresManualAmount: true,
       }),
     ]),
@@ -108,6 +119,19 @@
     return target * Math.pow(height / 100, 2);
   }
 
+  // Peso predicho de Devine, dependiente del sexo. Es el que usan ARDSNet para
+  // el volumen corriente y MIRA para el peso de dosificación, así que las tres
+  // herramientas informan el mismo número para el mismo paciente.
+  function calculatePredictedBodyWeight(heightCm, sex) {
+    const height = parseLocalizedNumber(heightCm);
+    const normalizedSex = clean(sex);
+    if (!isFiniteInRange(height, CLINICAL_LIMITS.heightCm)) return null;
+    if (normalizedSex !== 'female' && normalizedSex !== 'male') return null;
+    const predicted = (normalizedSex === 'female' ? 45.5 : 50) + 0.91 * (height - 152.4);
+    // Devine no es aplicable en tallas muy bajas: devuelve pesos sin sentido clínico.
+    return predicted >= CLINICAL_LIMITS.weightKg.min ? predicted : null;
+  }
+
   function calculateAdjustedWeight(actualWeightKg, idealWeightKg, correctionFactor = 0.4) {
     const actual = parseLocalizedNumber(actualWeightKg);
     const ideal = parseLocalizedNumber(idealWeightKg);
@@ -122,13 +146,22 @@
     const actualWeightKg = parseLocalizedNumber(input?.weightKg);
     const heightCm = parseLocalizedNumber(input?.heightCm);
     const bmi = calculateBmi(actualWeightKg, heightCm);
-    const idealWeightKg = calculateIdealWeight(heightCm);
-    if (bmi === null || idealWeightKg === null) return null;
+    const referenceWeightKg = calculateIdealWeight(heightCm);
+    const predictedBodyWeightKg = calculatePredictedBodyWeight(heightCm, input?.sex);
+    if (bmi === null || referenceWeightKg === null) return null;
+    // Con sexo cargado se usa Devine; sin sexo se cae al peso de referencia por
+    // IMC 22,5 y el consumidor puede saberlo mirando idealWeightBasis.
+    const idealWeightKg = predictedBodyWeightKg ?? referenceWeightKg;
+    const idealWeightBasis = predictedBodyWeightKg === null ? 'bmi-reference' : 'devine';
     const hasObesity = bmi >= 30;
     const adjustedWeightKg = hasObesity
       ? calculateAdjustedWeight(actualWeightKg, idealWeightKg)
       : null;
-    return Object.freeze({ actualWeightKg, heightCm, bmi, idealWeightKg, adjustedWeightKg, hasObesity });
+    return Object.freeze({
+      actualWeightKg, heightCm, bmi,
+      idealWeightKg, idealWeightBasis, referenceWeightKg, predictedBodyWeightKg,
+      adjustedWeightKg, hasObesity,
+    });
   }
 
   function calculateEgfrCkdEpi2021(creatinineMgDl, ageYears, sex) {
@@ -286,10 +319,17 @@
     });
   }
 
+  // El débito se indexa al peso predicho cuando está disponible. Sobre peso real
+  // un paciente obeso con diuresis normal cae por debajo de 0,5 mL/kg/h y queda
+  // etiquetado con un criterio urinario que en realidad no cumple.
   function calculateUrineOutputRate(input) {
     const urineMl = parseLocalizedNumber(input?.urineMl);
     const weightKg = parseLocalizedNumber(input?.weightKg);
     const hours = parseLocalizedNumber(input?.hours);
+    const providedIndexWeight = parseLocalizedNumber(input?.indexWeightKg);
+    const useProvidedIndexWeight = isFiniteInRange(providedIndexWeight, CLINICAL_LIMITS.weightKg);
+    const indexWeightKg = useProvidedIndexWeight ? providedIndexWeight : weightKg;
+    const indexWeightBasis = useProvidedIndexWeight ? 'predicted' : 'actual';
 
     if (
       urineMl === null || urineMl < 0 || urineMl > 30000 ||
@@ -299,17 +339,24 @@
       return {
         evaluable: false,
         rateMlKgH: null,
+        rateOnActualWeightMlKgH: null,
+        indexWeightKg: null,
+        indexWeightBasis,
         key: 'not-evaluable',
         label: 'No calculable',
         detail: 'Se necesitan volumen urinario, peso y horas válidos; confirmar que el registro sea completo.',
       };
     }
 
-    const rateMlKgH = urineMl / weightKg / hours;
+    const rateMlKgH = urineMl / indexWeightKg / hours;
+    const rateOnActualWeightMlKgH = urineMl / weightKg / hours;
     if (urineMl === 0 && hours >= 12) {
       return {
         evaluable: true,
         rateMlKgH,
+        rateOnActualWeightMlKgH,
+        indexWeightKg,
+        indexWeightBasis,
         key: 'anuria-window',
         label: 'Sin diuresis registrada durante 12 h o más',
         detail: 'Señal condicionada a una ventana completa y a la ausencia real de diuresis; corroborar registro y permeabilidad del sistema.',
@@ -319,6 +366,9 @@
       return {
         evaluable: true,
         rateMlKgH,
+        rateOnActualWeightMlKgH,
+        indexWeightKg,
+        indexWeightBasis,
         key: 'zero-short-window',
         label: 'Sin diuresis registrada en una ventana menor de 12 h',
         detail: 'El período no alcanza 12 h; corroborar registro y permeabilidad del sistema.',
@@ -328,6 +378,9 @@
       return {
         evaluable: true,
         rateMlKgH,
+        rateOnActualWeightMlKgH,
+        indexWeightKg,
+        indexWeightBasis,
         key: 'oliguria-window',
         label: 'Débito urinario menor de 0,5 mL/kg/h durante 6 h o más',
         detail: 'Compatible con criterio urinario temporal si la medición es completa; no establece por sí solo etiología ni conducta.',
@@ -337,6 +390,9 @@
       return {
         evaluable: true,
         rateMlKgH,
+        rateOnActualWeightMlKgH,
+        indexWeightKg,
+        indexWeightBasis,
         key: 'low-short-window',
         label: 'Débito bajo con ventana menor de 6 h',
         detail: 'El período es insuficiente para aplicar el criterio temporal de 6 h; repetir o completar la ventana.',
@@ -345,6 +401,9 @@
     return {
       evaluable: true,
       rateMlKgH,
+      rateOnActualWeightMlKgH,
+      indexWeightKg,
+      indexWeightBasis,
       key: 'no-signal',
       label: 'Sin señal por débito urinario en la ventana consignada',
       detail: 'Interpretar junto con tendencia, balance, creatinina y contexto clínico.',
@@ -382,23 +441,46 @@
     return `${formatNumber(parsed)}${suffix ? ` ${suffix}` : ''}`;
   }
 
-  function formatInfusionForEvolution(row, group, weightKg, missing) {
+  // Devuelve el peso sobre el que corresponde normalizar la dosis de esta droga,
+  // con la etiqueta que va escrita en la evolución para que el lector sepa cuál
+  // se usó. Si el peso que corresponde no está disponible, cae a peso real y lo
+  // dice: nunca informa un denominador distinto del que declara.
+  function resolveDosingWeight(drug, weights) {
+    const basis = drug?.dosingWeight || 'actual';
+    const actual = parseLocalizedNumber(weights?.actualWeightKg);
+    const ideal = parseLocalizedNumber(weights?.idealWeightKg);
+    const adjusted = parseLocalizedNumber(weights?.adjustedWeightKg);
+
+    if (basis === 'ideal' && ideal !== null) {
+      return { weightKg: ideal, label: 'peso ideal' };
+    }
+    if (basis === 'adjusted') {
+      // Mismo criterio que MIRA: ajustado si hay obesidad, real si no.
+      if (adjusted !== null) return { weightKg: adjusted, label: 'peso ajustado' };
+      if (actual !== null) return { weightKg: actual, label: 'peso real' };
+    }
+    return { weightKg: actual, label: 'peso real' };
+  }
+
+  function formatInfusionForEvolution(row, group, weights, missing) {
     const drug = getDrugById(group, clean(row?.drugId));
     if (!drug) return '';
-    const calculation = calculateInfusion({ ...row, weightKg });
+    const dosing = resolveDosingWeight(drug, weights);
+    const calculation = calculateInfusion({ ...row, weightKg: dosing.weightKg });
     if (!calculation) {
       missing.push(`${drug.label}: preparación, velocidad o unidad`);
       return '';
     }
     if (calculation.kind === 'activity') {
-      return `${drug.label} a ${formatNumber(calculation.rateMlH)} mL/h (${formatNumber(calculation.absoluteUiMin, 4)} UI/min; ${formatNumber(calculation.absoluteUiH, 3)} UI/h de apoyo)`;
+      const activityDetail = drug.id === 'vasopressin' ? ' de apoyo' : '';
+      return `${drug.label} a ${formatNumber(calculation.rateMlH)} mL/h (${formatNumber(calculation.absoluteUiMin, 4)} UI/min; ${formatNumber(calculation.absoluteUiH, 3)} UI/h${activityDetail})`;
     }
     const normalized = calculation.doseMcgKgMin === null
       ? ''
-      : `; ${formatNumber(calculation.doseMcgKgMin, 4)} mcg/kg/min con peso real`;
+      : `; ${formatNumber(calculation.doseMcgKgMin, 4)} mcg/kg/min con ${dosing.label}`;
     const base = `${drug.label} a ${formatNumber(calculation.rateMlH)} mL/h (${formatNumber(calculation.absoluteMcgMin, 3)} mcg/min${normalized})`;
     if (group !== 'sedative') return base;
-    const exposure = calculateInfusionExposure({ ...row, weightKg });
+    const exposure = calculateInfusionExposure({ ...row, weightKg: dosing.weightKg });
     if (!exposure) {
       missing.push(`${drug.label}: duración de infusión (1–72 h)`);
       return base;
@@ -406,16 +488,31 @@
     return `${base}; ${exposure.durationLabel}, total administrado estimado ${formatNumber(exposure.administeredMg, 3)} mg a ritmo constante`;
   }
 
-  function joinInfusionRows(rows, group, weightKg, missing, label) {
+  function joinInfusionRows(rows, group, weights, missing, label) {
     const rendered = (Array.isArray(rows) ? rows : [])
-      .map((row) => formatInfusionForEvolution(row, group, weightKg, missing))
+      .map((row) => formatInfusionForEvolution(row, group, weights, missing))
       .filter(Boolean);
     if (rendered.length) return rendered.join('; ');
     missing.push(label);
     return '';
   }
 
-  function buildRespiratory(data, missing) {
+  // El volumen corriente solo es interpretable indexado al peso predicho: en mL
+  // sueltos no distingue una ventilación protectiva de una que no lo es.
+  function buildTidalVolumeDetail(tidalVolume, anthropometry) {
+    const parsed = parseLocalizedNumber(tidalVolume);
+    if (parsed === null) return '';
+    const predicted = anthropometry?.predictedBodyWeightKg ?? null;
+    if (predicted === null || predicted <= 0) return `VT ${formatNumber(parsed)} mL`;
+    return `VT ${formatNumber(parsed)} mL (${formatNumber(parsed / predicted, 2)} mL/kg de peso predicho)`;
+  }
+
+  function numericDetail(label, value, unit) {
+    const parsed = parseLocalizedNumber(value);
+    return parsed === null ? '' : `${label} ${formatNumber(parsed)} ${unit}`;
+  }
+
+  function buildRespiratory(data, missing, anthropometry) {
     const intubated = clean(data?.intubated);
     if (!intubated) {
       missing.push('soporte respiratorio/intubación');
@@ -423,19 +520,37 @@
     }
     if (intubated === 'yes') {
       const mode = clean(data.mode);
+      const details = [
+        mode ? `modo ${mode}` : '',
+        numericDetail('presión inspiratoria/control', data.inspiratoryPressure, 'cmH₂O'),
+        numericDetail('PEEP', data.peep, 'cmH₂O'),
+        buildTidalVolumeDetail(data.tidalVolume, anthropometry),
+        numericDetail('FiO₂', data.fio2, '%'),
+        numericDetail('FR programada', data.respiratoryRate, 'rpm'),
+        numericDetail('presión pico', data.peakPressure, 'cmH₂O'),
+      ].filter(Boolean);
+      return `Respiratorio: intubado${details.length ? `; ${details.join(', ')}` : ''}.`;
+    }
+
+    if (intubated === 'niv') {
+      const mode = clean(data.nivMode);
+      const interfaceName = clean(data.nivInterface);
       const numericDetails = [
-        ['presión inspiratoria/control', data.inspiratoryPressure, 'cmH₂O'],
-        ['PEEP', data.peep, 'cmH₂O'],
-        ['VT', data.tidalVolume, 'mL'],
-        ['FiO₂', data.fio2, '%'],
-        ['FR programada', data.respiratoryRate, 'rpm'],
-        ['presión pico', data.peakPressure, 'cmH₂O'],
+        ['IPAP/presión inspiratoria', data.nivInspiratoryPressure, 'cmH₂O'],
+        ['EPAP/PEEP', data.nivPeep, 'cmH₂O'],
+        ['FiO₂', data.nivFio2, '%'],
+        ['FR observada', data.nivRespiratoryRate, 'rpm'],
       ].map(([label, value, unit]) => {
         const parsed = parseLocalizedNumber(value);
         return parsed === null ? '' : `${label} ${formatNumber(parsed)} ${unit}`;
       }).filter(Boolean);
-      const details = [mode ? `modo ${mode}` : '', ...numericDetails].filter(Boolean);
-      return `Respiratorio: intubado${details.length ? `; ${details.join(', ')}` : ''}.`;
+      const details = [
+        mode ? `modo ${mode}` : '',
+        interfaceName ? `interfaz ${interfaceName}` : '',
+        ...numericDetails,
+      ].filter(Boolean);
+      if (!details.length) missing.push('parámetros de VNI');
+      return `Respiratorio: ventilación no invasiva (VNI)${details.length ? `; ${details.join(', ')}` : ''}.`;
     }
 
     const device = clean(data.oxygenDevice);
@@ -484,12 +599,25 @@
       activeProblem ? `Problema activo: ${activeProblem}.` : '',
     ].filter(Boolean).join(' ');
 
+    // La antropometría se resuelve antes que cualquier infusión: define sobre qué
+    // peso se normaliza cada dosis, el débito urinario y el volumen corriente.
+    const anthropometry = calculateAnthropometry({
+      weightKg: data?.weightKg,
+      heightCm: data?.heightCm,
+      sex: data?.sex,
+    });
+    const dosingWeights = {
+      actualWeightKg: parseLocalizedNumber(data?.weightKg),
+      idealWeightKg: anthropometry?.idealWeightKg ?? null,
+      adjustedWeightKg: anthropometry?.adjustedWeightKg ?? null,
+    };
+
     const systolic = parseLocalizedNumber(data?.systolicBp);
     const diastolic = parseLocalizedNumber(data?.diastolicBp);
     const heartRate = parseLocalizedNumber(data?.heartRate);
     const dsi = calculateDsiFromVitals(data?.systolicBp, data?.diastolicBp, data?.heartRate);
     if (dsi === null) missing.push('Índice de Shock Diastólico');
-    const vasoactives = joinInfusionRows(data?.vasoactives, 'vasoactive', data?.weightKg, missing, 'vasoactivos');
+    const vasoactives = joinInfusionRows(data?.vasoactives, 'vasoactive', dosingWeights, missing, 'vasoactivos');
     const hemodynamicParts = [
       systolic !== null && diastolic !== null ? `TA ${formatNumber(systolic)}/${formatNumber(diastolic)} mmHg` : '',
       systolic !== null && diastolic === null ? `TAS ${formatNumber(systolic)} mmHg` : '',
@@ -501,7 +629,6 @@
     const hemodynamicLine = hemodynamicParts.length ? `Hemodinamia: ${hemodynamicParts.join('; ')}.` : '';
 
     const weight = parseLocalizedNumber(data?.weightKg);
-    const anthropometry = calculateAnthropometry({ weightKg: data?.weightKg, heightCm: data?.heightCm });
     if (!anthropometry) missing.push('IMC (peso real y talla válidos)');
     const urineMl = parseLocalizedNumber(data?.urineMl);
     const urineHours = parseLocalizedNumber(data?.urineHours);
@@ -518,6 +645,7 @@
       urineMl: data?.urineMl,
       weightKg: data?.weightKg,
       hours: data?.urineHours,
+      indexWeightKg: anthropometry?.predictedBodyWeightKg,
     });
     const urineAlerts = {
       'anuria-window': 'sin diuresis registrada durante 12 h o más',
@@ -529,7 +657,14 @@
       ? ''
       : [
         `diuresis ${formatNumber(urineMl)} mL${urineHours !== null ? ` en ${formatNumber(urineHours)} h` : ''}`,
-        urineAssessment.evaluable ? `débito ${formatNumber(urineAssessment.rateMlKgH, 2)} mL/kg/h` : '',
+        urineAssessment.evaluable
+          ? `débito ${formatNumber(urineAssessment.rateMlKgH, 2)} mL/kg/h sobre ${urineAssessment.indexWeightBasis === 'predicted' ? 'peso predicho' : 'peso real'}`
+          : '',
+        // Cuando los dos pesos difieren se muestran ambos: el número sobre peso
+        // real es el que aparece en otros registros y conviene poder cotejarlo.
+        urineAssessment.evaluable && urineAssessment.indexWeightBasis === 'predicted'
+          ? `${formatNumber(urineAssessment.rateOnActualWeightMlKgH, 2)} mL/kg/h sobre peso real`
+          : '',
         urineAssessment.evaluable ? (urineAlerts[urineAssessment.key] || '') : '',
       ].filter(Boolean).join('; ');
     const renalParts = [
@@ -553,11 +688,11 @@
     ].filter(Boolean);
     const infectiousLine = infectiousParts.length ? `Infectología: ${infectiousParts.join('; ')}.` : '';
     const rass = parseLocalizedNumber(data?.rass);
-    const sedatives = joinInfusionRows(data?.sedatives, 'sedative', data?.weightKg, missing, 'drogas activas de sedoanalgesia');
+    const sedatives = joinInfusionRows(data?.sedatives, 'sedative', dosingWeights, missing, 'drogas activas de sedoanalgesia');
     const sedationParts = [rass !== null ? `RASS ${formatNumber(rass)}` : '', sedatives].filter(Boolean);
     const sedationLine = sedationParts.length ? `Sedación: ${sedationParts.join('; ')}.` : '';
 
-    const respiratoryLine = buildRespiratory(data?.respiratory || {}, missing);
+    const respiratoryLine = buildRespiratory(data?.respiratory || {}, missing, anthropometry);
     const note = sanitizeClinicalNote(data?.manualTranscript);
     const noteLine = privacyFindings.length ? '' : note;
     if (!note) missing.push('nota/transcripción manual');
@@ -589,6 +724,7 @@
     calculateDsiFromVitals,
     calculateBmi,
     calculateIdealWeight,
+    calculatePredictedBodyWeight,
     calculateAdjustedWeight,
     calculateAnthropometry,
     calculateEgfrCkdEpi2021,

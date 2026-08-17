@@ -45,7 +45,7 @@
           <div><h2 id="respTitle">Respiratorio</h2><p>Parámetros actuales; las unidades quedan visibles.</p></div>
         </div>
         <div class="grid cols-3">
-          <label><span>¿Intubado? <b>*</b></span><select id="intubated"><option value="">Seleccionar</option><option value="yes">Sí</option><option value="no">No</option></select></label>
+          <label><span>Soporte respiratorio <b>*</b></span><select id="intubated"><option value="">Seleccionar</option><option value="yes">Ventilación invasiva</option><option value="niv">VNI</option><option value="no">Oxigenoterapia sin VNI</option></select></label>
         </div>
         <div id="invasiveFields" class="grid cols-4 conditional" hidden>
           <label><span>Modo</span><input id="ventMode" placeholder="VCV, PCV, PSV..."></label>
@@ -55,6 +55,14 @@
           <label><span>FiO₂</span><div class="unit-input"><input id="fio2" inputmode="decimal"><i>%</i></div></label>
           <label><span>FR programada</span><div class="unit-input"><input id="respiratoryRate" inputmode="decimal"><i>rpm</i></div></label>
           <label><span>Presión pico</span><div class="unit-input"><input id="peakPressure" inputmode="decimal"><i>cmH₂O</i></div></label>
+        </div>
+        <div id="nivFields" class="grid cols-3 conditional" hidden>
+          <label><span>Modo VNI</span><input id="nivMode" placeholder="CPAP, BiPAP, PSV..."></label>
+          <label><span>Interfaz</span><input id="nivInterface" placeholder="Oronasal, facial total, casco..."></label>
+          <label><span>IPAP / presión inspiratoria</span><div class="unit-input"><input id="nivInspiratoryPressure" inputmode="decimal"><i>cmH₂O</i></div></label>
+          <label><span>EPAP / PEEP</span><div class="unit-input"><input id="nivPeep" inputmode="decimal"><i>cmH₂O</i></div></label>
+          <label><span>FiO₂</span><div class="unit-input"><input id="nivFio2" inputmode="decimal"><i>%</i></div></label>
+          <label><span>FR observada</span><div class="unit-input"><input id="nivRespiratoryRate" inputmode="decimal"><i>rpm</i></div></label>
         </div>
         <div id="nonInvasiveFields" class="grid cols-3 conditional" hidden>
           <label><span>Dispositivo</span><input id="oxygenDevice" placeholder="Cánula, máscara, CNAF..."></label>
@@ -204,7 +212,7 @@
     </div>
   </template>
 
-  <script src="uti-ronda-core.js?v=4"></script>
-  <script src="app.js?v=4" defer></script>
+  <script src="uti-ronda-core.js?v=5"></script>
+  <script src="app.js?v=5" defer></script>
 </body>
 </html>
