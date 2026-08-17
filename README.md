@@ -21,11 +21,16 @@ La reproducción depende del soporte de códec y contenedor del navegador. Si el
 
 No hay transcripción automática, local ni cloud. En esta notebook se encontró el módulo Python `faster_whisper`, pero no un modelo local, un ejecutable estable ni `ffmpeg`; integrarlo exigiría dependencias y archivos pesados. El control se llama **“Cargar transcripción existente (.txt)”** porque únicamente abre un texto ya producido por otra herramienta: no transcribe el audio. La transcripción automática queda como funcionalidad futura, sin nube, API ni procesos pesados en este cambio.
 
+## Soporte respiratorio
+
+El selector diferencia ventilación invasiva, ventilación no invasiva (VNI) y oxigenoterapia sin VNI. Para VNI permite consignar modo, interfaz, IPAP o presión inspiratoria, EPAP/PEEP, FiO₂ y frecuencia respiratoria observada. El borrador incorpora solamente los parámetros ingresados y no interpreta respuesta ni propone cambios del soporte.
+
 ## Infusiones
 
 La biblioteca trazable se transpuso en `uti-ronda-core.js` sin importar ni modificar los otros artefactos:
 
 - `UTI Tools/vasopresores.html`: noradrenalina 4 mg/ampolla, dobutamina 250 mg/ampolla, adrenalina 1 mg/ampolla y vasopresina 20 UI/ampolla.
+- Nitroprusiato de sodio está disponible sin contenido precargado: UTI Tools y MIRA locales no fijan una presentación, por lo que exige ingresar y corroborar el contenido real por ampolla.
 - Nitroglicerina queda sin contenido precargado porque `UTI Tools` registra 25 mg/ampolla y la Recorrida previa 50 mg/ampolla.
 - MIRA + UTI Tools: fentanilo 0,5 mg/ampolla (500 mcg), remifentanilo 5 mg/ampolla y dexmedetomidina 0,2 mg/ampolla (200 mcg).
 - Midazolam usa `15 mg/ampolla` como valor sugerido, confirmado por el usuario para su práctica. Permanece editable y debe verificarse contra la presentación disponible. El contenido por ampolla, la masa total (`ampollas × 15 mg`) y la concentración final (`masa total ÷ volumen final`) se muestran como magnitudes distintas.
